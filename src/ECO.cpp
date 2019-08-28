@@ -325,18 +325,19 @@ void ECO::init_features()
         //  遍历max_cell中每一个像素
         for (int i = 0; i < max_cell_size; i++)
         {
-	    int num_odd_dimensions = 0;
-        //  遍历两种cell
-	    for (int j = 0; j < cell_size.size(); j++)
-	    { 
+            int num_odd_dimensions = 0;
+            //  遍历两种cell
+            for (int j = 0; j < cell_size.size(); j++)
+            { 
                 int sz_ = (new_sample_sz + i) / cell_size[j];
-		num_odd_dimensions+=sz_ % 2 ; 
-	    }
-	    if (num_odd_dimensions > max_odd)
-	    {
-		max_odd = num_odd_dimensions;
-		max_idx =  i ;
-	    }
+                num_odd_dimensions+=sz_ % 2 ; 
+            }
+            if (num_odd_dimensions > max_odd)
+            {
+                //  new_sample_sz + [0, max_cell)中的哪个值，除cell_size[j]后为奇数
+                max_odd = num_odd_dimensions;
+                max_idx =  i ;
+            }
         }
         new_sample_sz += max_idx;
         img_support_sz = cv::Size(new_sample_sz, new_sample_sz);
