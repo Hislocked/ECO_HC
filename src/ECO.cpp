@@ -310,22 +310,23 @@ void ECO::init(cv::Mat& im, const cv::Rect& rect){
      
 void ECO::init_features()
 {
-	vector<int> cell_size;
-	int max_cell_size ;
+	vector<int> cell_size;  //保存hog与cn的两个cell size
+	int max_cell_size ; //最大的cell size
 	cell_size.push_back(hog_features.fparams.cell_size);
 	if (cn_features.fparams.use_cn)
 		cell_size.push_back(cn_features.fparams.cell_size);
 
         max_cell_size = hog_features.fparams.cell_size;
-        
+        //  确保new_sample_sz能被max_cell_size整除，并且被2*max_cell_size除后余1,即new_sample_sz = (2k+1)max_cell_size
         int new_sample_sz = (1 + 2 *round(float( img_sample_sz.width) /float (2 * max_cell_size))) * max_cell_size;
 	
 
         int max_odd = -100, max_idx = -1; 
-
+        //  遍历max_cell中每一个像素
         for (int i = 0; i < max_cell_size; i++)
         {
 	    int num_odd_dimensions = 0;
+        //  遍历两种cell
 	    for (int j = 0; j < cell_size.size(); j++)
 	    { 
                 int sz_ = (new_sample_sz + i) / cell_size[j];
