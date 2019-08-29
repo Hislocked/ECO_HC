@@ -102,14 +102,16 @@ ECO::ECO()
 void ECO::init(cv::Mat& im, const cv::Rect& rect){
 
     bool debug = false;
+    //  确定target中心点
     pos.x = rect.x + float(rect.width - 1) / 2;
     pos.y = rect.y + float(rect.height - 1) / 2;
- 
+    //  确定target大小
     target_sz = rect.size();
-
-    params.init_sz = target_sz; 
     
+    params.init_sz = target_sz; 
+    //  计算搜索区域大小
     int search_area = rect.area() * pow(params.search_area_scale, 2);
+    //  根据设定值计算缩放比例
     if (search_area > params.max_image_sample_size){
         currentScaleFactor = sqrt((float)search_area / params.max_image_sample_size);
     }
@@ -117,7 +119,7 @@ void ECO::init(cv::Mat& im, const cv::Rect& rect){
         currentScaleFactor = sqrt((float)search_area / params.min_image_sample_size);
     else
         currentScaleFactor = 1.0;
-
+    //  根据缩放比例确定target size
     base_target_sz = cv::Size2f(target_sz.width / currentScaleFactor, target_sz.height / currentScaleFactor);
   
     int max_width = sqrt(params.max_image_sample_size);
@@ -126,15 +128,15 @@ void ECO::init(cv::Mat& im, const cv::Rect& rect){
         img_sample_sz = cv::Size(max_width, max_width);
     else
         img_sample_sz = cv::Size(min_width, min_width);
-    
+    //  初始化hog cn的参数
     init_features();
     img_support_sz = hog_features.img_input_sz;
 
 
     if(cn_features.fparams.use_cn){
-	feature_sz.push_back(cn_features.data_sz_block1);
-	feature_dim.push_back(cn_features.fparams.nDim);
-	compressed_dim.push_back(cn_features.fparams.compressed_dim);
+      feature_sz.push_back(cn_features.data_sz_block1);
+      feature_dim.push_back(cn_features.fparams.nDim);
+      compressed_dim.push_back(cn_features.fparams.compressed_dim);
     }
 
     feature_sz.push_back(hog_features.data_sz_block1);
@@ -143,15 +145,15 @@ void ECO::init(cv::Mat& im, const cv::Rect& rect){
 
     output_sz = 0;
     for (size_t i = 0; i != feature_sz.size(); ++i)
-    {
+    {   //  size=feature_sz[i].width或者feature_sz[i].width+1，确保为奇数
         size_t size = feature_sz[i].width + (feature_sz[i].width + 1) % 2 ;
         //13*13 53*53 59*59
         filter_sz.push_back(cv::Size(size, size));
-        k1 = size > output_sz ? i : k1;
-        output_sz = std::max(size,output_sz);
+        k1 = size > output_sz ? i : k1; //  k1为使size最大的feature_sz的index
+        output_sz = std::max(size,output_sz); //  output_sz为size的最大值
 	
     }
-
+    //作出meshgrid
     for (size_t i = 0; i < filter_sz.size(); ++i)
     {
         cv::Mat_<float> tempy(filter_sz[i].height, 1, CV_32FC1);
@@ -159,20 +161,21 @@ void ECO::init(cv::Mat& im, const cv::Rect& rect){
 
         for (int j = 0; j < tempy.rows; j++)
         {
-            tempy.at<float>(j, 0) = j - (tempy.rows / 2); 
+            tempy.at<float>(j, 0) = j - (tempy.rows / 2); //  tempy_T = {-3, -2, -1, 0, 1, 2, 3}
         }
         ky.push_back(tempy);
         
         float* tempxData = tempx.ptr<float>(0);
         for (int j = 0; j < tempx.cols; j++)
         {
-            tempxData[j] = j - (filter_sz[i].height/2);
+            tempxData[j] = j - (filter_sz[i].height/2); //  tempx = {-1, 0, 1}
         }
         kx.push_back(tempx);
     }
 
-    yf_gaussion();
-    cos_wind();
+    yf_gaussion();  //  标签
+    cos_wind();     //  余弦窗
+    //  feature 插值的傅里叶系数
     for (size_t i = 0; i < filter_sz.size(); ++i)
     {
         cv::Mat interp1_fs1, interp2_fs1;
@@ -180,7 +183,7 @@ void ECO::init(cv::Mat& im, const cv::Rect& rect){
         interp1_fs.push_back(interp1_fs1);
         interp2_fs.push_back(interp2_fs1);
     }
-
+    //  
     for (size_t i = 0; i < filter_sz.size(); i++)
     {
         cv::Mat temp = get_reg_filter(img_support_sz, base_target_sz, params);
@@ -189,14 +192,14 @@ void ECO::init(cv::Mat& im, const cv::Rect& rect){
         float energy = FFTTools::mat_sum(t);
         reg_energy.push_back(energy);
     }
-
+    //  多尺度
     if (params.use_scale_filter)
 	fdsst.init_scale_filter(params);
 
     int half_scales = ( params.number_of_scales - 1) /2 ;
 
     for (int i = -half_scales; i < half_scales +1 ; i++)
-          scaleFactors.push_back(pow(params.scale_step, i));
+          scaleFactors.push_back(pow(params.scale_step, i));    //  多尺度的系数
 
 
     cv::Point sample_pos = cv::Point(round(pos.x),round(pos.y));
@@ -316,41 +319,43 @@ void ECO::init_features()
 	if (cn_features.fparams.use_cn)
 		cell_size.push_back(cn_features.fparams.cell_size);
 
-        max_cell_size = hog_features.fparams.cell_size;
-        //  确保new_sample_sz能被max_cell_size整除，并且被2*max_cell_size除后余1,即new_sample_sz = (2k+1)max_cell_size
-        int new_sample_sz = (1 + 2 *round(float( img_sample_sz.width) /float (2 * max_cell_size))) * max_cell_size;
-	
+  max_cell_size = hog_features.fparams.cell_size;
+  //  确保new_sample_sz能被max_cell_size整除，并且被2*max_cell_size除后余1,即new_sample_sz = (2k+1)max_cell_size
+  int new_sample_sz = (1 + 2 *round(float( img_sample_sz.width) /float (2 * max_cell_size))) * max_cell_size;
 
-        int max_odd = -100, max_idx = -1; 
-        //  遍历max_cell中每一个像素
-        for (int i = 0; i < max_cell_size; i++)
-        {
-            int num_odd_dimensions = 0;
-            //  遍历两种cell
-            for (int j = 0; j < cell_size.size(); j++)
-            { 
-                int sz_ = (new_sample_sz + i) / cell_size[j];
-                num_odd_dimensions+=sz_ % 2 ; 
-            }
-            if (num_odd_dimensions > max_odd)
-            {
-                //  new_sample_sz + [0, max_cell)中的哪个值，除cell_size[j]后为奇数
-                max_odd = num_odd_dimensions;
-                max_idx =  i ;
-            }
-        }
-        new_sample_sz += max_idx;
-        img_support_sz = cv::Size(new_sample_sz, new_sample_sz);
 
-        hog_features.img_sample_sz = img_support_sz;
-        hog_features.img_input_sz = img_support_sz;
+  int max_odd = -100, max_idx = -1; 
+  //  遍历max_cell中每一个像素
+  for (int i = 0; i < max_cell_size; i++)
+  {
+      int num_odd_dimensions = 0;
+      //  遍历两种cell
+      for (int j = 0; j < cell_size.size(); j++)
+      { 
+          int sz_ = (new_sample_sz + i) / cell_size[j];
+          num_odd_dimensions+=sz_ % 2 ; 
+      }
+      if (num_odd_dimensions > max_odd)
+      {
+          //  new_sample_sz + i属于[0, max_cell)中的哪个值，除cell_size[j]后为奇数
+          //  记录i的大小
+          max_odd = num_odd_dimensions;
+          max_idx =  i ;
+      }
+  }
+  new_sample_sz += max_idx; //  尽可能使新的size除两种cell size时都得到奇数
+  img_support_sz = cv::Size(new_sample_sz, new_sample_sz);
 
-        hog_features.data_sz_block1 = cv::Size(img_support_sz.width / hog_features.fparams.cell_size, img_support_sz.height / hog_features.fparams.cell_size);
-        ECO::img_support_sz = img_support_sz;
-	if (cn_features.fparams.use_cn)
+  hog_features.img_sample_sz = img_support_sz;
+  hog_features.img_input_sz = img_support_sz;
+  //  计算hogblock个数（横竖）
+  hog_features.data_sz_block1 = cv::Size(img_support_sz.width / hog_features.fparams.cell_size, img_support_sz.height / hog_features.fparams.cell_size);
+  ECO::img_support_sz = img_support_sz;
+  //  计算cnblock个数（横竖）
+  if (cn_features.fparams.use_cn)
 	    cn_features.data_sz_block1 = cv::Size(img_support_sz.width / cn_features.fparams.cell_size, img_support_sz.height / cn_features.fparams.cell_size);
 
-        params.hog_feat = hog_features;  
+  params.hog_feat = hog_features;  
 }
 
 
